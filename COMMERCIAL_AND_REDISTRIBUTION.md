@@ -12,7 +12,7 @@ The standard StainlessSteel license is **PolyForm Strict 1.0.0** for first-party
 
 ## Permission request template
 
-**To:** [RIGHTSHOLDER BUSINESS CONTACT — set before release]
+**To:** KotalaKishanReddy via the repository's GitHub Issues (license / distribution permission requests)
 
 **Subject:** StainlessSteel license / distribution permission request
 

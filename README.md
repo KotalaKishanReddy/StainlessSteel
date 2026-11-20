@@ -68,4 +68,4 @@ Run `cargo test --locked` for regression coverage. GitHub Actions runs formattin
 
 StainlessSteel is **source-available** under the supplied PolyForm Strict License 1.0.0. Read [the license](LICENSE.md), [first-party scope](COPYRIGHT_AND_SCOPE.md), [commercial permissions](COMMERCIAL_AND_REDISTRIBUTION.md) and [contribution policy](CONTRIBUTING.md). Upstream components retain their respective terms. Use `stainless licenses` for the locked inventory or `stainless licenses --full` to print available upstream license texts.
 
-This is a private development snapshot. The [pre-release checklist](docs/PRE_RELEASE_LEGAL_CHECKLIST.md) still requires verified ownership, contact details, legal review and a final distribution audit.
+This is a development snapshot (v0.1.0). The [pre-release checklist](docs/PRE_RELEASE_LEGAL_CHECKLIST.md) still requires verified ownership, contact details, legal review and a final distribution audit.

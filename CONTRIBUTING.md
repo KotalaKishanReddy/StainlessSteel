@@ -24,4 +24,4 @@ Public GitHub **forking within GitHub** is separately allowed by GitHub's platfo
 - [ ] Require provenance checks and license scans for all incoming code.
 - [ ] Review every accepted contribution for third-party code and trade secrets.
 
-Security contact: [INSERT SECURITY CONTACT OR PRIVATE REPORTING URL]
+Security contact: report privately via the repository's GitHub Security Advisories. Do not open a public issue for a suspected vulnerability.

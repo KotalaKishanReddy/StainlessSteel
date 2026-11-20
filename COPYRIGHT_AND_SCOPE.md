@@ -1,8 +1,6 @@
 # StainlessSteel — Copyright and License Scope
 
-**ACTION BEFORE PUBLISHING:** Replace `[RIGHTSHOLDER LEGAL NAME]` with the actual person/entity who owns the first-party copyright. Do not publish with that placeholder.
-
-Copyright (c) 2026 [RIGHTSHOLDER LEGAL NAME]. All rights reserved except for the permissions explicitly granted.
+Copyright (c) 2026 KotalaKishanReddy. All rights reserved except for the permissions explicitly granted.
 
 The **original StainlessSteel code, assets, documentation, and distributed binaries owned by the named rights holder** are offered under **PolyForm Strict License 1.0.0**, whose unaltered text is in [`LICENSE.md`](LICENSE.md), unless an individual file expressly says otherwise.
 
