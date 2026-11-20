@@ -749,6 +749,14 @@ fn direct_install_copy(c: &Case) -> PathBuf {
     }
     let dest = c.0.join("stainless");
     fs::copy(env!("CARGO_BIN_EXE_stainless"), &dest).unwrap();
+    // Copy-then-exec can race the filesystem on some runners (ETXTBSY):
+    // wait until the copy is actually executable.
+    for _ in 0..100 {
+        match Command::new(&dest).arg("--version").output() {
+            Ok(out) if out.status.success() => break,
+            _ => thread::sleep(Duration::from_millis(50)),
+        }
+    }
     fs::write(
         c.0.join(".stainless-install-receipt.json"),
         r#"{"install_kind":"direct"}"#,
