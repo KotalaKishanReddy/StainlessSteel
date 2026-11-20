@@ -1,5 +1,7 @@
 # StainlessSteel
 
+[![CI](https://github.com/KotalaKishanReddy/StainlessSteel/actions/workflows/ci.yml/badge.svg)](https://github.com/KotalaKishanReddy/StainlessSteel/actions/workflows/ci.yml) [![License: PolyForm Strict 1.0.0](https://img.shields.io/badge/license-PolyForm%20Strict%201.0.0-blue)](LICENSE) ![Linux and macOS](https://img.shields.io/badge/platform-linux%20%7C%20macOS-9DE5B8)
+
 **a harness built with rust**
 
 A local-first coding assistant for Linux and macOS development. Chat with a locally served model, send code or a diff for review, and pick up the same conversation after closing the terminal. The executable is `stainless`. This repository contains the first development build from the [revision 1.2 blueprint](docs/STAINLESSSTEEL_MASTER_BLUEPRINT.md).
@@ -54,6 +56,18 @@ stainless backup create ./stainless-backup.sqlite3
 stainless backup verify ./stainless-backup.sqlite3
 ```
 
+```sh
+stainless update check
+stainless update status
+stainless completions bash >> ~/.bashrc
+stainless context inspect last
+```
+
+`update check` queries the release channel over HTTPS (honoring proxy
+environment variables) and never executes downloaded code. Direct installs
+record an install receipt, reported by `update status`, so a future updater
+can distinguish them from package-managed or source-built copies.
+
 If an operating-system kill leaves a pending turn, first confirm the original process is gone. Use the exact ID and turn number from inspection with `stainless session recovery resolve SESSION_ID --turn NUMBER`. This marks the turn interrupted and lets you submit a new request. A second process cannot start another turn on a session with a pending request. Separate sessions can run concurrently.
 
 Set `STAINLESS_HOME` to choose a private directory. Otherwise the journal lives in `$XDG_STATE_HOME/stainless` or `~/.local/state/stainless`. A verified snapshot can be inspected independently by copying it to `sessions.sqlite3` in a **new** mode-0700 state directory and starting the CLI with that directory. The backup command refuses to overwrite an existing path.
@@ -85,5 +99,7 @@ StainlessSteel — *a harness built with rust* — is **source-available under P
 License: [PolyForm Strict 1.0.0](LICENSE) · [Rights & scope](COPYRIGHT_AND_SCOPE.md) · [Request permission](COMMERCIAL_AND_REDISTRIBUTION.md) · [Contributing](CONTRIBUTING.md)
 
 Run `stainless licenses` for the locked third-party inventory, or `stainless licenses --full` to print available upstream license texts.
+
+Contributors are acknowledged in [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 This is a development snapshot (v0.1.0). The [pre-release checklist](docs/PRE_RELEASE_LEGAL_CHECKLIST.md) still requires verified ownership, contact details, legal review and a final distribution audit.

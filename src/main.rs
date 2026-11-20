@@ -1,7 +1,8 @@
 mod model;
 mod store;
 mod tui;
-use clap::{Parser, Subcommand};
+mod update;
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use serde_json::{json, Value};
 use std::{
     io::{self, IsTerminal, Read, Write},
@@ -66,6 +67,49 @@ enum Command {
     Backup {
         #[command(subcommand)]
         action: Backup,
+    },
+    /// Check for newer releases and report install provenance.
+    Update {
+        #[command(subcommand)]
+        action: Update,
+    },
+    /// Print shell completions for the given shell.
+    Completions {
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+    /// Inspect session context usage against the token budget.
+    Context {
+        #[command(subcommand)]
+        action: Context,
+    },
+}
+#[derive(Clone, ValueEnum)]
+enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+}
+#[derive(Subcommand)]
+enum Update {
+    /// Query the release channel for a newer version.
+    Check {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Report the installed version, channel and install kind.
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+}
+#[derive(Subcommand)]
+enum Context {
+    /// Show event, turn and byte counts for a session.
+    Inspect {
+        id: String,
+        #[arg(long)]
+        json: bool,
     },
 }
 #[derive(Subcommand)]
@@ -212,6 +256,45 @@ fn execute() -> Result<()> {
                 print!("{}", include_str!("../docs/THIRD_PARTY_LICENSE_TEXTS.txt"));
             }
         }
+        Command::Update { action } => match action {
+            Update::Check { json } => update::check(json)?,
+            Update::Status { json } => update::status(json)?,
+        },
+        Command::Completions { shell } => {
+            let sh = match shell {
+                Shell::Bash => clap_complete::Shell::Bash,
+                Shell::Zsh => clap_complete::Shell::Zsh,
+                Shell::Fish => clap_complete::Shell::Fish,
+            };
+            clap_complete::generate(sh, &mut Cli::command(), "stainless", &mut io::stdout());
+        }
+        Command::Context { action } => match action {
+            Context::Inspect { id, json: machine } => {
+                let db = Store::open()?;
+                let id = db.resolve(&id)?;
+                let stats = db.context_stats(&id)?;
+                if machine {
+                    println!("{stats}");
+                } else {
+                    println!("Session {id}");
+                    println!(
+                        "events: {} · bytes: {} / 262144 · turns complete={} interrupted={} running={}",
+                        stats["events"],
+                        stats["bytes"],
+                        stats["turns"]["complete"],
+                        stats["turns"]["interrupted"],
+                        stats["turns"]["running"]
+                    );
+                    if let Some(kinds) = stats["by_kind"].as_object() {
+                        let mut names: Vec<&String> = kinds.keys().collect();
+                        names.sort();
+                        for k in names {
+                            println!("  {k}: {}", kinds[k]);
+                        }
+                    }
+                }
+            }
+        },
         Command::Backup { action } => match action {
             Backup::Create { path } => {
                 Store::open()?.backup(&path)?;

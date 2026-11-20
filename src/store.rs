@@ -173,6 +173,49 @@ impl Store {
         let rows=q.query_map([id],|r|Ok(json!({"seq":r.get::<_,i64>(0)?,"kind":r.get::<_,String>(1)?,"body":r.get::<_,String>(2)?,"at":r.get::<_,String>(3)?})))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
+    pub fn context_stats(&self, id: &str) -> Result<Value> {
+        let mut kinds = serde_json::Map::new();
+        {
+            let mut q = self
+                .0
+                .prepare("SELECT kind,COUNT(*) FROM events WHERE session=?1 GROUP BY kind")?;
+            let rows = q.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+            for r in rows {
+                let (kind, count) = r?;
+                kinds.insert(kind, json!(count));
+            }
+        }
+        let mut turns = serde_json::Map::new();
+        {
+            let mut q = self
+                .0
+                .prepare("SELECT status,COUNT(*) FROM turns WHERE session=?1 GROUP BY status")?;
+            let rows = q.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+            for r in rows {
+                let (status, count) = r?;
+                turns.insert(status, json!(count));
+            }
+        }
+        for missing in ["complete", "interrupted", "running"] {
+            turns.entry(missing.to_owned()).or_insert(json!(0));
+        }
+        let events: i64 =
+            self.0
+                .query_row("SELECT COUNT(*) FROM events WHERE session=?1", [id], |r| {
+                    r.get(0)
+                })?;
+        let bytes: i64 = self
+            .0
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(body)),0) FROM events WHERE session=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        Ok(
+            json!({"session":id,"events":events,"bytes":bytes,"budget":262144,"by_kind":kinds,"turns":turns}),
+        )
+    }
     pub fn checkpoint(&self, id: &str) -> Result<i64> {
         self.0.execute(
             "INSERT INTO events(session,kind,body) VALUES(?1,'checkpoint','')",

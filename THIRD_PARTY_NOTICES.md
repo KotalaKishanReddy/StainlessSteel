@@ -142,3 +142,30 @@ Development inventory for the checked-in Cargo.lock. The table includes platform
 SQLite 3.46.0 is compiled from the amalgamation in libsqlite3-sys. Its source header dedicates the SQLite code to the public domain. The independent SQLite and Rust toolchain notices require inclusion in the final distribution audit.
 
 The development harness contacts an independently installed model server. No model weights, llama.cpp executables, fonts or browser binaries are packaged.
+
+## Supplement — packages added after the v0.1.0 inventory
+
+These crates entered `Cargo.lock` with the shell-completion support and the
+TLS-enabled `update check`. They follow the same rule: upstream licenses
+remain in force and nothing is relicensed under PolyForm Strict. This
+supplement will be folded into the generated table and
+`docs/THIRD_PARTY_LICENSE_TEXTS.txt` at the next release regeneration.
+
+| Package | Version | Declared license |
+|---|---|---|
+| clap_complete | 4.5.67 | MIT OR Apache-2.0 |
+| getrandom | 0.2.17 | MIT OR Apache-2.0 |
+| ring | 0.17.14 | Apache-2.0 AND ISC |
+| rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT |
+| rustls-pki-types | 1.16.0 | MIT OR Apache-2.0 |
+| rustls-webpki | 0.103.17 | ISC |
+| subtle | 2.6.1 | BSD-3-Clause |
+| untrusted | 0.9.0 | ISC |
+| webpki-roots | 0.26.11 | CDLA-Permissive-2.0 |
+| zeroize | 1.9.2 | Apache-2.0 OR MIT |
+
+`webpki-roots` (Mozilla CA certificates, CDLA-Permissive-2.0) is a new license
+family for this project and is flagged for counsel review under the
+pre-release checklist before any release containing it. `windows-sys 0.52.0`
+entered the lockfile as a Windows-only transitive dependency and is not
+compiled into Linux binaries.

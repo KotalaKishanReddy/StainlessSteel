@@ -268,6 +268,38 @@ fn backup_snapshot_is_independent_and_never_overwrites() {
     assert_eq!(c.json(&["session", "list", "--json"])[0]["name"], "updated");
 }
 #[test]
+fn update_status_reports_version_without_network() {
+    let c = Case::new();
+    let v = c.json(&["update", "status", "--json"]);
+    assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(v["channel"], "stable");
+    assert_eq!(v["install"]["kind"], "unknown");
+    assert!(c.ok(&["update", "status"]).contains("stainless v"));
+}
+#[test]
+fn completions_emit_shell_scripts() {
+    let c = Case::new();
+    for shell in ["bash", "zsh", "fish"] {
+        let out = c.ok(&["completions", shell]);
+        assert!(out.contains("stainless"), "empty {shell} completions");
+    }
+}
+#[test]
+fn context_inspect_counts_events_and_turns() {
+    let c = Case::new();
+    let id = c.ok(&["session", "new", "--name", "ctx"]);
+    c.ok(&["session", "checkpoint", &id]);
+    let s = c.json(&["context", "inspect", "--json", &id]);
+    assert_eq!(s["session"], id);
+    assert_eq!(s["events"], 2);
+    assert_eq!(s["by_kind"]["created"], 1);
+    assert_eq!(s["by_kind"]["checkpoint"], 1);
+    assert_eq!(s["turns"]["complete"], 0);
+    assert_eq!(s["budget"], 262144);
+    assert!(c.ok(&["context", "inspect", &id]).contains("events: 2"));
+    assert!(!c.exec(&["context", "inspect", "missing"]).status.success());
+}
+#[test]
 fn verify_rejects_foreign_db_without_creating_state() {
     let c = Case::new();
     let path = c.0.with_extension("foreign");

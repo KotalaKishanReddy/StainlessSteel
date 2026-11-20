@@ -65,6 +65,9 @@ echo "Verifying checksum ..."
 
 mkdir -p "$PREFIX"
 install -m 755 "$TMPDIR/$ASSET" "$PREFIX/stainless"
+cat > "$PREFIX/.stainless-install-receipt.json" <<EOF
+{"install_kind":"direct","version":"${VERSION#v}","asset":"$ASSET","installed_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","source":"$BASE/$ASSET"}
+EOF
 
 echo "Installed stainless to $PREFIX/stainless"
 "$PREFIX/stainless" doctor --json
