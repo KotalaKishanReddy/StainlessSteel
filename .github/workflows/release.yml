@@ -58,8 +58,14 @@ jobs:
       - name: Checksums and manifest
         run: |
           cd dist
-          for d in */; do mv "$d"* . 2>/dev/null || true; done
-          rmdir --ignore-fail-on-non-empty */ 2>/dev/null || true
+          # Artifact dirs carry the same name as the binary inside them,
+          # so move each file aside before removing its directory.
+          for d in stainless-*/; do
+            a="${d%/}"
+            mv "$d$a" "./$a.staged"
+            rmdir "$d"
+            mv "./$a.staged" "./$a"
+          done
           sha256sum stainless-* > SHA256SUMS.txt
           python3 - <<'EOF'
           import hashlib, json, os
