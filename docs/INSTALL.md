@@ -76,7 +76,11 @@ mise x stainlesssteel@latest -- stainless --version
 ```
 
 mise resolves the latest GitHub release and picks the asset matching your
-OS/architecture automatically.
+OS/architecture automatically. mise holds brand-new releases for 24 hours by
+default (`minimum_release_age`); install a pinned version such as
+`ubi:KotalaKishanReddy/StainlessSteel@0.2.3` on day zero, or plain `@latest`
+after the quarantine lifts. The installed binary is named `StainlessSteel`
+(after the repo); call it by that exact name or alias it to `stainless`.
 
 ## Manual
 
