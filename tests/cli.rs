@@ -943,6 +943,45 @@ fn update_download_falls_back_to_legacy_asset_name() {
     server.join().unwrap();
 }
 #[test]
+fn staged_downloads_keep_state_dir_private() {
+    if std::env::consts::OS != "linux" {
+        return;
+    }
+    // Fresh home: download first (creates the state tree), then prove the
+    // journal still opens — a default-mode tree would refuse with 0700.
+    let asset_name = format!("stainless-linux-{}", std::env::consts::ARCH);
+    let asset: Vec<u8> = b"mode-bytes".to_vec();
+    let hash = {
+        let p = std::env::temp_dir().join(format!("stainless-h5-{}", std::process::id()));
+        fs::write(&p, &asset).unwrap();
+        let hex =
+            String::from_utf8(Command::new("sha256sum").arg(&p).output().unwrap().stdout).unwrap();
+        fs::remove_file(&p).unwrap();
+        hex.split_whitespace().next().unwrap().to_owned()
+    };
+    let sums = format!("{hash}  {asset_name}\n");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let server = thread::spawn(move || serve_fixture(listener, sums, asset, 2));
+    let c = Case::new();
+    assert!(!c.0.exists());
+    let base = format!("http://127.0.0.1:{port}");
+    let out = c
+        .cmd(&["update", "download", "--version", "v9.9.9"])
+        .env("STAINLESS_API_BASE", &base)
+        .env("STAINLESS_DOWNLOAD_BASE", &base)
+        .env("STAINLESS_REPO", "x")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    server.join().unwrap();
+    c.ok(&["session", "new", "--name", "after-download"]);
+}
+#[test]
 fn tool_list_publishes_registry() {
     let c = Case::new();
     let out = c.ok(&["tool", "list"]);

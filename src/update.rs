@@ -183,7 +183,7 @@ fn stage_tagged(tag: &str) -> Result<(std::path::PathBuf, String, String)> {
         }
     };
     let bytes = fetch_bytes(&format!("{base}/{repo}/releases/download/{tag}/{asset}"))?;
-    let dir = crate::store::directory()?.join("updates").join(tag);
+    let dir = ensure_state_dir()?.join(tag);
     std::fs::create_dir_all(&dir)?;
     let staged = dir.join(&asset);
     let tmp = dir.join(format!("{asset}.part"));
@@ -220,7 +220,7 @@ fn updates_dir() -> Result<std::path::PathBuf> {
 }
 
 fn journal(outcome: &str, detail: &Value) {
-    let Ok(dir) = updates_dir() else { return };
+    let Ok(dir) = ensure_state_dir() else { return };
     let _ = std::fs::create_dir_all(&dir);
     let line = json!({"outcome":outcome,"detail":detail}).to_string() + "\n";
     use std::io::Write as _;
@@ -231,15 +231,39 @@ fn journal(outcome: &str, detail: &Value) {
         .and_then(|mut f| f.write_all(line.as_bytes()));
 }
 
-fn lock_path() -> Result<std::path::PathBuf> {
-    Ok(updates_dir()?.join("update.lock"))
+/// Create the state tree the same way `Store::open` does: the top
+/// directory is private (0700). Any updater path that writes under the
+/// state directory must go through here first, otherwise a default-mode
+/// directory would make every later `Store::open` refuse to start.
+fn ensure_state_dir() -> Result<std::path::PathBuf> {
+    let state = crate::store::directory()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        if !state.exists() {
+            let mut builder = std::fs::DirBuilder::new();
+            builder.mode(0o700).recursive(true);
+            builder.create(&state)?;
+        }
+        let meta = std::fs::symlink_metadata(&state)?;
+        if !meta.is_dir() {
+            return Err("state path must be a private directory".into());
+        }
+        if meta.permissions().mode() & 0o077 != 0 {
+            return Err("state directory must have mode 0700".into());
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = std::fs::create_dir_all(&state);
+    }
+    Ok(state.join("updates"))
 }
 
 fn acquire_lock() -> Result<std::path::PathBuf> {
-    let path = lock_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    let dir = ensure_state_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("update.lock");
     if let Ok(raw) = std::fs::read_to_string(&path) {
         if let Ok(pid) = raw.trim().parse::<i64>() {
             if pid > 0 && crate::agent::process_alive(pid) {
