@@ -1,6 +1,6 @@
 {
   "name": "stainlesssteel",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "description": "StainlessSteel — a harness built with rust. Local-first coding assistant. Source-available under PolyForm Strict 1.0.0.",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {

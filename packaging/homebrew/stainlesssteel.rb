@@ -1,13 +1,13 @@
 class Stainlesssteel < Formula
   desc "Local-first coding assistant (source-available)"
   homepage "https://github.com/KotalaKishanReddy/StainlessSteel"
-  version "0.2.0"
+  version "0.2.3"
   license "PolyForm-Strict-1.0.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.0/stainless-macos-aarch64"
-      sha256 "16084c68841a867aeae6c1b5104c7a67fad697e8370934f3525b7138a16a326d"
+      url "https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.3/stainless-macos-aarch64"
+      sha256 "1c8bdeeb530d0c578c22938e12417c94f896e6ef21d2d0cb17eb4eeebf427293"
 
       def install
         bin.install "stainless-macos-aarch64" => "stainless"
@@ -17,16 +17,16 @@ class Stainlesssteel < Formula
 
   on_linux do
     on_intel do
-      url "https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.0/stainless-linux-x86_64"
-      sha256 "0e2091a132e468151f91558c3d72e68f139598455ea06322c3d834428acc8880"
+      url "https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.3/stainless-linux-x86_64"
+      sha256 "f0f72d131b3a9879f251cf147c3ba99f3f961989416b6ff9f14d80cbbdcd177d"
 
       def install
         bin.install "stainless-linux-x86_64" => "stainless"
       end
     end
     on_arm do
-      url "https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.0/stainless-linux-aarch64"
-      sha256 "032895145a7698720680682b8eb9aa69924c19803e9e02a627f6e2c85532fd27"
+      url "https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.3/stainless-linux-aarch64"
+      sha256 "429011160fe821a1b7ea12bec33610083ac4f07fe6d8fa583611030ff14ab138"
 
       def install
         bin.install "stainless-linux-aarch64" => "stainless"

@@ -136,4 +136,4 @@ Run `stainless licenses` for the locked third-party inventory, or `stainless lic
 
 Contributors are acknowledged in [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
-This is a development snapshot (v0.2.0). The [pre-release checklist](docs/PRE_RELEASE_LEGAL_CHECKLIST.md) still requires verified ownership, contact details, legal review and a final distribution audit.
+This is a development snapshot (v0.2.3). The [pre-release checklist](docs/PRE_RELEASE_LEGAL_CHECKLIST.md) still requires verified ownership, contact details, legal review and a final distribution audit.
