@@ -108,7 +108,7 @@ jobs:
           channel="$([[ "$GITHUB_REF_NAME" == *-* ]] && echo beta || echo stable)"
           prerelease="$([[ "$channel" == "beta" ]] && echo --prerelease || echo)"
           # shellcheck disable=SC2086
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$GITHUB_REF_NAME" --repo KotalaKishanReddy/StainlessSteel \
             --title "$GITHUB_REF_NAME" \
             --notes "See the project README and docs for install and license terms. Verify downloads with SHA256SUMS.txt. Pre-release channel: $channel." \
             $prerelease \
