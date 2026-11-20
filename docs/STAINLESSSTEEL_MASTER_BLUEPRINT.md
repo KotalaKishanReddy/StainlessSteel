@@ -1143,7 +1143,7 @@ Actual command `stainless update` can be an alias for `stainless update install`
 
 ## Revision 1.2 mandatory repository files
 
-- `LICENSE.md` — unchanged official PolyForm Strict 1.0.0 text (https://polyformproject.org/licenses/strict/1.0.0).
+- `LICENSE` — unchanged official PolyForm Strict 1.0.0 text (https://polyformproject.org/licenses/strict/1.0.0).
 - `COPYRIGHT_AND_SCOPE.md` — legal rightsholder, first-party licensing perimeter, upstream carveouts.
 - `COMMERCIAL_AND_REDISTRIBUTION.md` — written license request and decision policy.
 - `CONTRIBUTING.md` — no coding contributions until contributor development rights plus contributor agreement are complete (PolyForm Strict alone does not allow modification).

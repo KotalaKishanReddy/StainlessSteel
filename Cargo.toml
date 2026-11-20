@@ -7,7 +7,7 @@ name = "stainless"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
-license-file = "LICENSE.md"
+license-file = "LICENSE"
 description = "StainlessSteel — a harness built with rust"
 publish = false
 

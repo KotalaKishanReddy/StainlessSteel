@@ -5,7 +5,7 @@
 1. First-party Rust harness application, UX assets and documentation owned by the rights holder: **PolyForm Strict 1.0.0**.
 2. Never claim ownership of upstream third-party source. Retain the upstream license, patent and notice obligations.
 3. A separate signed license is required for proprietary/commercial use or redistribution of the *first-party StainlessSteel product* outside PolyForm Strict's grant.
-4. The original license text in `LICENSE.md` must not be changed; official PolyForm license text may be reused. Copyright owner identification goes in `COPYRIGHT_AND_SCOPE.md`.
+4. The original license text in `LICENSE` must not be changed; official PolyForm license text may be reused. Copyright owner identification goes in `COPYRIGHT_AND_SCOPE.md`.
 5. Compliance is not equivalent to restricting every file in a combined distribution. Permissively licensed components keep their independent freedoms.
 
 ## Inbound licensing
@@ -33,7 +33,7 @@ The application should not be published to crates.io automatically. In each firs
 name = "stainlesssteel-core"
 version = "0.1.0"
 publish = false
-license-file = "../../LICENSE.md"  # adjust relative to this Cargo.toml
+license-file = "../../LICENSE"  # adjust relative to this Cargo.toml
 ```
 
 Do not assume that every registry or scanner recognizes the PolyForm Strict SPDX expression. Validate metadata and license discovery using the actual build and use the `license-file` fallback if needed. Third-party crates retain their independent `license` metadata.

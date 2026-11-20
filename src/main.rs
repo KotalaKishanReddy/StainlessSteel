@@ -205,7 +205,7 @@ fn execute() -> Result<()> {
         Command::Licenses { full } => {
             println!(
                 "{}\n{}",
-                include_str!("../LICENSE.md"),
+                include_str!("../LICENSE"),
                 include_str!("../THIRD_PARTY_NOTICES.md")
             );
             if full {

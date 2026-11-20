@@ -2,7 +2,7 @@
 
 Copyright (c) 2026 KotalaKishanReddy. All rights reserved except for the permissions explicitly granted.
 
-The **original StainlessSteel code, assets, documentation, and distributed binaries owned by the named rights holder** are offered under **PolyForm Strict License 1.0.0**, whose unaltered text is in [`LICENSE.md`](LICENSE.md), unless an individual file expressly says otherwise.
+The **original StainlessSteel code, assets, documentation, and distributed binaries owned by the named rights holder** are offered under **PolyForm Strict License 1.0.0**, whose unaltered text is in [`LICENSE`](LICENSE), unless an individual file expressly says otherwise.
 
 This license allows qualifying noncommercial use but does not grant the right to distribute copies or modify StainlessSteel. Commercial use, proprietary products, redistribution, hosted/managed offerings, and derivative releases require **separate written permission** when not otherwise permitted by applicable law. For permissions, see `COMMERCIAL_AND_REDISTRIBUTION.md`.
 

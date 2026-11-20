@@ -82,7 +82,7 @@ StainlessSteel — *a harness built with rust* — is **source-available under P
 - Third-party libraries and fonts retain their own licenses and rights. See [Third-Party Notices](THIRD_PARTY_NOTICES.md).
 - Public GitHub forks are possible under GitHub's separate platform terms; a fork does not confer additional permissions to distribute or exploit StainlessSteel outside those terms.
 
-License: [PolyForm Strict 1.0.0](LICENSE.md) · [Rights & scope](COPYRIGHT_AND_SCOPE.md) · [Request permission](COMMERCIAL_AND_REDISTRIBUTION.md) · [Contributing](CONTRIBUTING.md)
+License: [PolyForm Strict 1.0.0](LICENSE) · [Rights & scope](COPYRIGHT_AND_SCOPE.md) · [Request permission](COMMERCIAL_AND_REDISTRIBUTION.md) · [Contributing](CONTRIBUTING.md)
 
 Run `stainless licenses` for the locked third-party inventory, or `stainless licenses --full` to print available upstream license texts.
 

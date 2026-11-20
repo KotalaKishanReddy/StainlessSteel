@@ -11,7 +11,7 @@
 #
 # StainlessSteel is source-available under PolyForm Strict 1.0.0. By
 # downloading and running this software you agree to the license terms in
-# https://github.com/KotalaKishanReddy/StainlessSteel/blob/main/LICENSE.md
+# https://github.com/KotalaKishanReddy/StainlessSteel/blob/main/LICENSE
 set -eu
 
 REPO="KotalaKishanReddy/StainlessSteel"
