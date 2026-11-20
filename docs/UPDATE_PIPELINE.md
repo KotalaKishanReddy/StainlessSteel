@@ -69,15 +69,29 @@ pre-releases once the client learns to list them (`update check` currently
 reads `releases/latest`, which only ever resolves stable). Channel support
 in `check` is implemented; channel-aware listing is a follow-up.
 
-## 5. What is deliberately missing
+## 5. Implemented client behavior (`update install` / `rollback`)
 
-Per the blueprint's safe-update rules, the following must exist before any
-`update install` ships, and none of it does: trusted code-signing keys and
-signature/attestation verification on the client, an install receipt written
-by every install path, a staged out-of-process activator (never overwrite
-the running binary), transactional schema migration with a backward-compatible
-read path, health checks with automatic rollback to the previous binary and
-verified backup, package-manager awareness (brew/apt/dnf/pacman/nix defer to
-their own tools), and single-flight locking for concurrent updaters. The
-corresponding failure matrix (F.5 in the blueprint) is the acceptance test
-for that work.
+`update install` is implemented and covered by integration tests (refusals,
+fail-closed attestation, quiesce, tamper rejection, journaling):
+
+- Only `direct` installs (installer receipt present) are eligible.
+  Package-managed and source builds are refused with guidance.
+- Single-flight via `updates/update.lock` (stale locks from dead PIDs are
+  reclaimed); every attempt appends to `updates/install.log`.
+- Checksum re-verified at install time; then a Sigstore attestation check
+  via `gh attestation verify` against this repo. Any failure aborts —
+  fail-closed, no bypass flag.
+- Refuses to proceed while any session has an active turn.
+- Backs up the journal (`updates/sessions-pre-<version>-<pid>.sqlite3`),
+  keeps `stainless.previous`, swaps atomically, health-checks
+  (`doctor --json` + version match), and restores the previous binary on
+  any failure. `update rollback` swaps back.
+- `update download` and `update check` share the same staged-asset and
+  channel logic; asset naming falls back to the legacy v0.1.0 scheme.
+
+Still open (tracked, not yet built): first-party code-signing keys and
+in-process Sigstore verification (today this delegates to `gh`),
+package-manager-native artifacts (`.deb`, `.rpm`; Homebrew formula updates
+per release are manual), TUF-style metadata/rollback protection, and
+`beta`-channel listing in `update check` (today `latest` resolves stable
+only). The blueprint's failure matrix (F.5) remains the acceptance test.
