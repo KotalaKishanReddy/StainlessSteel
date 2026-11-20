@@ -1,0 +1,109 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            asset: stainless-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: stainless-linux-aarch64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset: stainless-macos-aarch64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.88.0 --profile minimal --target ${{ matrix.target }} --component rustfmt,clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - run: ./target/${{ matrix.target }}/release/stainless doctor --json
+      - run: ./target/${{ matrix.target }}/release/stainless licenses > /dev/null
+      - name: Stage asset
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/stainless" "dist/${{ matrix.asset }}"
+          chmod 755 "dist/${{ matrix.asset }}"
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661  # v3
+        with:
+          subject-path: dist/${{ matrix.asset }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          path: dist
+      - name: Checksums and manifest
+        run: |
+          cd dist
+          for d in */; do mv "$d"* . 2>/dev/null || true; done
+          rmdir --ignore-fail-on-non-empty */ 2>/dev/null || true
+          sha256sum stainless-* > SHA256SUMS.txt
+          python3 - <<'EOF'
+          import hashlib, json, os
+          version = os.environ["GITHUB_REF_NAME"]
+          channel = "beta" if "-" in version else "stable"
+          assets = []
+          for name in sorted(os.listdir(".")):
+            if not name.startswith("stainless-"):
+              continue
+            with open(name, "rb") as f:
+              digest = hashlib.sha256(f.read()).hexdigest()
+            target = "unknown"
+            if "linux-x86_64" in name:
+              target = "x86_64-unknown-linux-gnu"
+            elif "linux-aarch64" in name:
+              target = "aarch64-unknown-linux-gnu"
+            elif "macos-aarch64" in name:
+              target = "aarch64-apple-darwin"
+            assets.append({
+              "file": name,
+              "target": target,
+              "sha256": digest,
+              "kind": "executable",
+            })
+          manifest = {
+            "schema": 1,
+            "project": "StainlessSteel",
+            "version": version,
+            "channel": channel,
+            "assets": assets,
+          }
+          with open("manifest.json", "w") as f:
+            json.dump(manifest, f, indent=2)
+            f.write("\n")
+          EOF
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          channel="$([[ "$GITHUB_REF_NAME" == *-* ]] && echo beta || echo stable)"
+          prerelease="$([[ "$channel" == "beta" ]] && echo --prerelease || echo)"
+          # shellcheck disable=SC2086
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "See the project README and docs for install and license terms. Verify downloads with SHA256SUMS.txt. Pre-release channel: $channel." \
+            $prerelease \
+            dist/stainless-* dist/SHA256SUMS.txt dist/manifest.json

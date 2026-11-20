@@ -7,6 +7,7 @@ use std::{
     process::{Command, Output, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
     thread,
+    time::Duration,
 };
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -28,6 +29,22 @@ impl Case {
     }
     fn exec(&self, args: &[&str]) -> Output {
         self.cmd(args).output().unwrap()
+    }
+    fn piped(&self, args: &[&str], stdin_data: &str) -> Output {
+        let mut child = self
+            .cmd(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(stdin_data.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
     }
     fn ok(&self, args: &[&str]) -> String {
         let o = self.exec(args);
@@ -298,6 +315,434 @@ fn context_inspect_counts_events_and_turns() {
     assert_eq!(s["budget"], 262144);
     assert!(c.ok(&["context", "inspect", &id]).contains("events: 2"));
     assert!(!c.exec(&["context", "inspect", "missing"]).status.success());
+}
+#[test]
+fn migrates_v1_journal_to_v3() {
+    let c = Case::new();
+    fs::create_dir_all(&c.0).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&c.0, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    rusqlite::Connection::open(c.0.join("sessions.sqlite3"))
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE sessions(id TEXT PRIMARY KEY, name TEXT NOT NULL, workspace TEXT NOT NULL);
+            CREATE TABLE events(seq INTEGER PRIMARY KEY, session TEXT NOT NULL REFERENCES sessions(id), kind TEXT NOT NULL, body TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+            CREATE INDEX session_events ON events(session, seq);
+            CREATE TABLE turns(id INTEGER PRIMARY KEY REFERENCES events(seq), session TEXT NOT NULL REFERENCES sessions(id), model TEXT NOT NULL, status TEXT NOT NULL, reply TEXT);
+            CREATE UNIQUE INDEX one_active ON turns(session) WHERE status='running';
+            INSERT INTO sessions VALUES('ses_legacy','legacy','/tmp');
+            INSERT INTO events(session,kind,body) VALUES('ses_legacy','created','legacy');
+            PRAGMA user_version=1;",
+        )
+        .unwrap();
+    assert_eq!(c.json(&["session", "list", "--json"])[0]["name"], "legacy");
+    c.ok(&["session", "checkpoint", "ses_legacy"]);
+    assert_eq!(
+        c.json(&["context", "inspect", "--json", "ses_legacy"])["events"],
+        2
+    );
+}
+#[test]
+fn fork_import_and_archive_sessions() {
+    let c = Case::new();
+    let id = c.ok(&["session", "new", "--name", "orig"]);
+    c.ok(&["session", "checkpoint", &id]);
+    let fork = c.ok(&["session", "fork", &id]);
+    assert_ne!(fork, id);
+    assert_eq!(
+        c.json(&["session", "export", &fork])["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    let partial = c.ok(&["session", "fork", &id, "--at", "1"]);
+    assert_eq!(
+        c.json(&["session", "export", &partial])["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    c.ok(&["session", "archive", &id]);
+    let list = c.json(&["session", "list", "--json"]);
+    assert!(list.as_array().unwrap().iter().all(|s| s["id"] != id));
+    assert_eq!(
+        c.json(&["session", "list", "--json", "--all"])
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert!(!c.exec(&["session", "archive", "missing"]).status.success());
+    let export = c.ok(&["session", "export", &fork]);
+    let path = c.0.join("exp.json");
+    fs::write(&path, &export).unwrap();
+    let imp = c.ok(&[
+        "session",
+        "import",
+        path.to_str().unwrap(),
+        "--name",
+        "copy",
+    ]);
+    assert_ne!(imp, fork);
+    assert_eq!(
+        c.json(&["session", "export", &imp])["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert!(!c
+        .exec(&[
+            "session",
+            "import",
+            path.to_str().unwrap(),
+            "--workspace",
+            "/path-that-does-not-exist-ss"
+        ])
+        .status
+        .success());
+}
+fn git_available() -> bool {
+    Command::new("git")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+fn git_setup(path: &str) {
+    for args in [
+        vec!["init"],
+        vec!["config", "user.email", "test@example.com"],
+        vec!["config", "user.name", "Test"],
+    ] {
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(&args)
+            .output()
+            .unwrap()
+            .status
+            .success());
+    }
+}
+#[test]
+fn repo_commands_wrap_system_git() {
+    if !git_available() {
+        return;
+    }
+    let c = Case::new();
+    let ws = c.0.join("ws");
+    fs::create_dir_all(&ws).unwrap();
+    git_setup(ws.to_str().unwrap());
+    fs::write(ws.join("new.txt"), "hello\n").unwrap();
+    let w = ws.to_str().unwrap();
+    let status = c.json(&["repo", "status", "--workspace", w, "--json"]);
+    assert!(status["porcelain"].as_str().unwrap().contains("new.txt"));
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(w)
+        .args(["add", "new.txt"])
+        .output()
+        .unwrap()
+        .status
+        .success());
+    c.ok(&[
+        "repo",
+        "commit",
+        "--workspace",
+        w,
+        "--message",
+        "init",
+        "new.txt",
+    ]);
+    assert!(!c.ok(&["repo", "branch", "--workspace", w]).is_empty());
+    fs::write(ws.join("new.txt"), "hello\nworld\n").unwrap();
+    assert!(c.ok(&["repo", "diff", "--workspace", w]).contains("+world"));
+    assert!(c
+        .ok(&["repo", "diff", "--workspace", w, "--stat"])
+        .contains("new.txt"));
+    let wt = c.0.join("wt");
+    c.ok(&[
+        "repo",
+        "worktree",
+        "add",
+        "--workspace",
+        w,
+        wt.to_str().unwrap(),
+        "--branch",
+        "agent-branch",
+    ]);
+    assert!(c
+        .ok(&["repo", "worktree", "list", "--workspace", w])
+        .contains(wt.to_str().unwrap()));
+    c.ok(&[
+        "repo",
+        "worktree",
+        "remove",
+        "--workspace",
+        w,
+        wt.to_str().unwrap(),
+    ]);
+    assert!(!c
+        .exec(&[
+            "repo",
+            "status",
+            "--workspace",
+            "/path-that-does-not-exist-ss"
+        ])
+        .status
+        .success());
+}
+#[test]
+fn patch_applies_modify_create_delete_and_rejects() {
+    let c = Case::new();
+    let ws = c.0.join("ws");
+    fs::create_dir_all(&ws).unwrap();
+    let w = ws.to_str().unwrap();
+    fs::write(ws.join("hello.txt"), "a\nb\nc\n").unwrap();
+    fs::write(ws.join("gone.txt"), "gone\n").unwrap();
+    let modify = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n";
+    let out = c.piped(&["patch", "apply", "--workspace", w], modify);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(ws.join("hello.txt")).unwrap(),
+        "a\nB\nc\n"
+    );
+    let create = "--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+one\n+two\n";
+    let out = c.piped(&["patch", "apply", "--workspace", w], create);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(ws.join("new.txt")).unwrap(),
+        "one\ntwo\n"
+    );
+    let delete = "--- a/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone\n";
+    let out = c.piped(&["patch", "apply", "--workspace", w], delete);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!ws.join("gone.txt").exists());
+    let mismatch = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1,3 +1,3 @@\n a\n-WRONG\n c\n";
+    assert!(!c
+        .piped(&["patch", "apply", "--workspace", w], mismatch)
+        .status
+        .success());
+    let traversal = "--- a/../evil.txt\n+++ b/../evil.txt\n@@ -0,0 +1 @@\n+x\n";
+    assert!(!c
+        .piped(&["patch", "apply", "--workspace", w], traversal)
+        .status
+        .success());
+    assert!(!c.0.join("evil.txt").exists());
+}
+#[test]
+fn agent_budget_is_enforced() {
+    let c = Case::new();
+    let out = c
+        .cmd(&["agent", "spawn", "--model", "m", "hi"])
+        .env("STAINLESS_MAX_AGENTS", "0")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("budget"));
+}
+#[test]
+fn agent_spawn_runs_turn_and_reconciles() {
+    let c = Case::new();
+    let id = c.ok(&["session", "new"]);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let server = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        request(&s);
+        reply(&mut s, true);
+    });
+    let agent = c.ok(&[
+        "agent",
+        "spawn",
+        "--session",
+        &id,
+        "--port",
+        &port,
+        "--model",
+        "fixture",
+        "hi",
+    ]);
+    let mut status = String::new();
+    for _ in 0..100 {
+        status = c.json(&["agent", "inspect", "--json", &agent])["status"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        if status != "running" {
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(status, "done");
+    server.join().unwrap();
+    assert!(c
+        .json(&["agent", "list", "--json"])
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|a| a["id"] == agent));
+    assert!(c.ok(&["agent", "tree"]).contains(&agent));
+    assert!(!c.exec(&["agent", "cancel", &agent]).status.success());
+    assert!(!c
+        .exec(&["agent", "inspect", "agt_missing"])
+        .status
+        .success());
+}
+#[test]
+fn agent_spawn_marks_failure_when_model_unreachable() {
+    let c = Case::new();
+    let id = c.ok(&["session", "new"]);
+    let dead = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = dead.local_addr().unwrap().port().to_string();
+    drop(dead);
+    let agent = c.ok(&[
+        "agent",
+        "spawn",
+        "--session",
+        &id,
+        "--port",
+        &port,
+        "--model",
+        "fixture",
+        "hi",
+    ]);
+    let mut status = String::new();
+    for _ in 0..100 {
+        status = c.json(&["agent", "inspect", "--json", &agent])["status"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        if status != "running" {
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(status, "failed");
+}
+fn serve_fixture(listener: TcpListener, sums: String, asset: Vec<u8>) {
+    for _ in 0..2 {
+        let (mut s, _) = listener.accept().unwrap();
+        let head = request_head(&s);
+        let payload: &[u8] = if head.contains("SHA256SUMS.txt") {
+            sums.as_bytes()
+        } else {
+            &asset
+        };
+        write!(s, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len()).unwrap();
+        s.write_all(payload).unwrap();
+    }
+}
+fn request_head(s: &TcpStream) -> String {
+    s.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    let mut r = BufReader::new(s);
+    let mut head = String::new();
+    loop {
+        let mut line = String::new();
+        r.read_line(&mut line).unwrap();
+        if line == "\r\n" || line.is_empty() {
+            break;
+        }
+        head.push_str(&line);
+    }
+    head
+}
+#[test]
+fn update_download_stages_verified_asset() {
+    if std::env::consts::OS != "linux" {
+        return;
+    }
+    let asset_name = format!(
+        "stainless-{}-linux-{}",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::ARCH
+    );
+    let asset: Vec<u8> = b"fake-binary-bytes".to_vec();
+    let hash = {
+        let p = std::env::temp_dir().join(format!("stainless-hash-{}", std::process::id()));
+        fs::write(&p, &asset).unwrap();
+        let hex =
+            String::from_utf8(Command::new("sha256sum").arg(&p).output().unwrap().stdout).unwrap();
+        fs::remove_file(&p).unwrap();
+        hex.split_whitespace().next().unwrap().to_owned()
+    };
+    let sums = format!("{hash}  {asset_name}\n");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let server = thread::spawn(move || serve_fixture(listener, sums, asset));
+    let c = Case::new();
+    let base = format!("http://127.0.0.1:{port}");
+    let out = c
+        .cmd(&["update", "download", "--version", "v9.9.9", "--json"])
+        .env("STAINLESS_API_BASE", &base)
+        .env("STAINLESS_DOWNLOAD_BASE", &base)
+        .env("STAINLESS_REPO", "x")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["asset"], asset_name);
+    let staged = PathBuf::from(v["path"].as_str().unwrap());
+    assert_eq!(fs::read(&staged).unwrap(), b"fake-binary-bytes");
+    server.join().unwrap();
+    let bad_sums = format!("{}  {asset_name}\n", "0".repeat(64));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let server =
+        thread::spawn(move || serve_fixture(listener, bad_sums, b"tampered-bytes".to_vec()));
+    let c2 = Case::new();
+    let base = format!("http://127.0.0.1:{port}");
+    let out = c2
+        .cmd(&["update", "download", "--version", "v9.9.9"])
+        .env("STAINLESS_API_BASE", &base)
+        .env("STAINLESS_DOWNLOAD_BASE", &base)
+        .env("STAINLESS_REPO", "x")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("checksum"));
+    assert!(!c2
+        .0
+        .join("updates")
+        .join("v9.9.9")
+        .join(&asset_name)
+        .exists());
+    server.join().unwrap();
+}
+#[test]
+fn tool_list_publishes_registry() {
+    let c = Case::new();
+    let out = c.ok(&["tool", "list"]);
+    assert!(out.contains("session.new") && out.contains("patch.apply"));
+    let defs = c.json(&["tool", "list", "--json"]);
+    let arr = defs.as_array().unwrap();
+    assert!(arr.len() > 20);
+    assert!(arr
+        .iter()
+        .all(|d| d["id"].is_string() && d["input_schema"]["type"] == "object"));
 }
 #[test]
 fn verify_rejects_foreign_db_without_creating_state() {

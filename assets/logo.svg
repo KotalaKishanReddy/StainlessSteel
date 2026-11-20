@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" role="img" aria-label="StainlessSteel logo">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E4EDF0"/>
+      <stop offset="0.5" stop-color="#98ABB3"/>
+      <stop offset="1" stop-color="#5B6B74"/>
+    </linearGradient>
+    <linearGradient id="plateDim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#98ABB3"/>
+      <stop offset="0.5" stop-color="#5B6B74"/>
+      <stop offset="1" stop-color="#35444C"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="640" height="240" rx="28" fill="#090D10"/>
+  <rect x="1.5" y="1.5" width="637" height="237" rx="27" fill="none" stroke="#35444C" stroke-width="3"/>
+  <rect x="48" y="48" width="26" height="144" rx="13" fill="url(#plateDim)"/>
+  <rect x="86" y="48" width="26" height="144" rx="13" fill="url(#plate)"/>
+  <rect x="48" y="100" width="64" height="10" rx="5" fill="#82D9E6"/>
+  <rect x="48" y="150" width="64" height="10" rx="5" fill="#82D9E6" opacity="0.55"/>
+  <text x="150" y="118" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif" font-size="52" font-weight="700" letter-spacing="6" fill="#E4EDF0">STAINLESSSTEEL</text>
+  <text x="152" y="158" font-family="'JetBrains Mono', ui-monospace, Menlo, monospace" font-size="22" letter-spacing="4" fill="#98ABB3">a harness built with rust</text>
+</svg>

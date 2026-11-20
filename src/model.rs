@@ -15,7 +15,7 @@ pub fn run(
     model: &str,
     port: u16,
     prompt: &str,
-    mut emit: impl FnMut(&str) -> Result<()>,
+    emit: impl FnMut(&str) -> Result<()>,
 ) -> Result<String> {
     if prompt.trim().is_empty() || prompt.len() > MAX_INPUT {
         return Err("prompt must contain 1–65536 bytes".into());
@@ -24,6 +24,34 @@ pub fn run(
         return Err("provide a model name of 1–256 bytes".into());
     }
     let (turn, messages) = store.begin_turn(id, prompt, model)?;
+    execute(store, id, turn, model, port, messages, emit)
+}
+
+/// Run a turn that a supervisor already opened with
+/// [`Store::begin_turn`]. Used to launch agent workers that execute
+/// outside the parent process: the turn intent is committed before the
+/// child starts, so a crash always reconciles instead of replaying.
+pub fn run_resumed(
+    store: &mut Store,
+    id: &str,
+    turn: i64,
+    model: &str,
+    port: u16,
+    emit: impl FnMut(&str) -> Result<()>,
+) -> Result<String> {
+    let messages = store.turn_messages(id, turn)?;
+    execute(store, id, turn, model, port, messages, emit)
+}
+
+fn execute(
+    store: &mut Store,
+    id: &str,
+    turn: i64,
+    model: &str,
+    port: u16,
+    messages: Vec<Value>,
+    mut emit: impl FnMut(&str) -> Result<()>,
+) -> Result<String> {
     let result = (|| {
         let agent = ureq::AgentBuilder::new()
             .redirects(0)

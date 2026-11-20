@@ -1,5 +1,9 @@
 # StainlessSteel
 
+<p align="center">
+  <img src="assets/logo.svg" alt="StainlessSteel — a harness built with rust" width="640">
+</p>
+
 [![CI](https://github.com/KotalaKishanReddy/StainlessSteel/actions/workflows/ci.yml/badge.svg)](https://github.com/KotalaKishanReddy/StainlessSteel/actions/workflows/ci.yml) [![License: PolyForm Strict 1.0.0](https://img.shields.io/badge/license-PolyForm%20Strict%201.0.0-blue)](LICENSE) ![Linux and macOS](https://img.shields.io/badge/platform-linux%20%7C%20macOS-9DE5B8)
 
 **a harness built with rust**
@@ -57,16 +61,37 @@ stainless backup verify ./stainless-backup.sqlite3
 ```
 
 ```sh
+stainless session fork last --at 12
+stainless session archive last
+stainless session list --all --json
+git diff --no-ext-diff | stainless patch apply --workspace .
+```
+
+```sh
 stainless update check
+stainless update download --version v0.1.0
 stainless update status
 stainless completions bash >> ~/.bashrc
 stainless context inspect last
+stainless tool list | head
 ```
 
 `update check` queries the release channel over HTTPS (honoring proxy
-environment variables) and never executes downloaded code. Direct installs
-record an install receipt, reported by `update status`, so a future updater
-can distinguish them from package-managed or source-built copies.
+environment variables) and never executes downloaded code. `update download`
+stages a checksum-verified asset under the state directory and stops there —
+activation with signature checks and rollback is still unwritten. Direct
+installs record an install receipt, reported by `update status`, so a future
+updater can distinguish them from package-managed or source-built copies.
+
+Native git work stays inside `stainless repo` (`status`, `diff`, `branch`,
+`commit`, `worktree`), which shells out to system git and never stages files
+for you. `stainless agent spawn --session last --model NAME "prompt"` runs
+one turn in a supervised worker process (budget: 4 concurrent by default,
+`STAINLESS_MAX_AGENTS` to change); `agent list|inspect|tree|cancel` reconcile
+against the journal, and a dead worker never replays — its turn is marked
+interrupted instead. Tool calling follows the [Code Mode](docs/ADR/001-code-mode-tool-calling.md)
+direction: the model programs against the registry shown by `tool list`,
+not one JSON call per turn.
 
 If an operating-system kill leaves a pending turn, first confirm the original process is gone. Use the exact ID and turn number from inspection with `stainless session recovery resolve SESSION_ID --turn NUMBER`. This marks the turn interrupted and lets you submit a new request. A second process cannot start another turn on a session with a pending request. Separate sessions can run concurrently.
 
@@ -78,11 +103,16 @@ Set `STAINLESS_HOME` to choose a private directory. Otherwise the journal lives 
 |---|---|
 | CLI, Ratatui session manager, JSONL, local chat and source review | Implemented |
 | SQLite session isolation, checkpoint markers, transcript replay, recovery and verified backups | Implemented |
+| Session fork/import/archive, journal migrations v1→v3 | Implemented |
+| System-git status/diff/branch/commit, isolated agent worktrees | Implemented |
+| Unified-diff patch apply with traversal and mismatch guards | Implemented |
+| Supervised agent workers with budget, reconcile, cancel | Implemented |
+| Update check/download staging, install receipts, completions, context inspect, tool registry | Implemented |
 | Linux x86-64 | Built and exercised with a real local model |
 | Linux ARM64 | Static binary built. Session and backup smoke tests passed under QEMU |
 | macOS | CI job prepared. Native execution pending |
-| Cloud providers, vault, automated workspace edits and sandboxed test tools | Planned |
-| Rune desktop, Infinity, Obscura, MCP/ACP, plugins and signed updater | Planned |
+| Credential vault and broker, MCP/ACP, context compaction, sandboxed test tools | Planned |
+| Rune desktop, Infinity, Obscura, plugins and signed updater with rollback | Planned |
 
 Run `cargo test --locked` for regression coverage. GitHub Actions runs formatting, Clippy, tests, a release build and a doctor smoke test. [Build evidence](docs/BUILD_EVIDENCE.md) records the checks run on this revision.
 
