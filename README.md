@@ -72,8 +72,18 @@ Set `STAINLESS_HOME` to choose a private directory. Otherwise the journal lives 
 
 Run `cargo test --locked` for regression coverage. GitHub Actions runs formatting, Clippy, tests, a release build and a doctor smoke test. [Build evidence](docs/BUILD_EVIDENCE.md) records the checks run on this revision.
 
-## Licensing
+## License: source-available
 
-StainlessSteel is **source-available** under the supplied PolyForm Strict License 1.0.0. Read [the license](LICENSE.md), [first-party scope](COPYRIGHT_AND_SCOPE.md), [commercial permissions](COMMERCIAL_AND_REDISTRIBUTION.md) and [contribution policy](CONTRIBUTING.md). Upstream components retain their respective terms. Use `stainless licenses` for the locked inventory or `stainless licenses --full` to print available upstream license texts.
+StainlessSteel — *a harness built with rust* — is **source-available under PolyForm Strict License 1.0.0** for original StainlessSteel code (not an OSI-approved open-source project).
+
+- You may inspect the source and use StainlessSteel for purposes permitted by PolyForm Strict.
+- The license **does not grant general redistribution or modification rights**.
+- Commercial/proprietary use, reselling, distribution, hosting as a service, and publication of modified copies require a separate **written license**, unless independently permitted by applicable law.
+- Third-party libraries and fonts retain their own licenses and rights. See [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+- Public GitHub forks are possible under GitHub's separate platform terms; a fork does not confer additional permissions to distribute or exploit StainlessSteel outside those terms.
+
+License: [PolyForm Strict 1.0.0](LICENSE.md) · [Rights & scope](COPYRIGHT_AND_SCOPE.md) · [Request permission](COMMERCIAL_AND_REDISTRIBUTION.md) · [Contributing](CONTRIBUTING.md)
+
+Run `stainless licenses` for the locked third-party inventory, or `stainless licenses --full` to print available upstream license texts.
 
 This is a development snapshot (v0.1.0). The [pre-release checklist](docs/PRE_RELEASE_LEGAL_CHECKLIST.md) still requires verified ownership, contact details, legal review and a final distribution audit.
