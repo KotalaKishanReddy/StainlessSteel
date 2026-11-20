@@ -18,13 +18,13 @@ jobs:
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             asset: stainless-linux-aarch64
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             asset: stainless-macos-aarch64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           persist-credentials: false
       - run: rustup toolchain install 1.88.0 --profile minimal --target ${{ matrix.target }} --component rustfmt,clippy
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661  # v3
         with:
           subject-path: dist/${{ matrix.asset }}
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5
         with:
           name: ${{ matrix.asset }}
           path: dist/${{ matrix.asset }}

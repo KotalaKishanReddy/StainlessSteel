@@ -16,7 +16,7 @@ Matrix (Tier 1 targets from the blueprint):
 |---|---|---|
 | ubuntu-22.04 | x86_64-unknown-linux-gnu | stainless-linux-x86_64 |
 | ubuntu-24.04-arm | aarch64-unknown-linux-gnu | stainless-linux-aarch64 |
-| macos-14 | aarch64-apple-darwin | stainless-macos-aarch64 |
+| macos-latest | aarch64-apple-darwin | stainless-macos-aarch64 |
 
 Each job runs the full gate suite on its runner, smoke-tests `doctor --json`
 and `licenses` on the built binary, then uploads the asset. Provenance is
