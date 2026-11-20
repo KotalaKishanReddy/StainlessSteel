@@ -4,6 +4,14 @@
 
 A local-first coding assistant for Linux and macOS development. Chat with a locally served model, send code or a diff for review, and pick up the same conversation after closing the terminal. The executable is `stainless`. This repository contains the first development build from the [revision 1.2 blueprint](docs/STAINLESSSTEEL_MASTER_BLUEPRINT.md).
 
+## Install (Linux)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/KotalaKishanReddy/StainlessSteel/main/install.sh | sh
+```
+
+Installs the prebuilt static binary for your architecture (x86_64 or ARM64) into `~/.local/bin`, verifying its SHA-256 checksum first. macOS users: build from source below.
+
 ## Build and try it
 
 Install Rust via rustup and a C compiler for bundled SQLite. On macOS the Xcode Command Line Tools supply the compiler. From the repository root:
