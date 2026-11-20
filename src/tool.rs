@@ -218,6 +218,18 @@ pub fn registry() -> Vec<ToolDef> {
             schema(&[("version", "string")], &[]),
         ),
         def(
+            "update.install",
+            "Verify, attest, and atomically activate a release with rollback.",
+            "execute:update",
+            schema(&[("version", "string")], &[]),
+        ),
+        def(
+            "update.rollback",
+            "Restore the previous binary.",
+            "execute:update",
+            json!({"type":"object","properties":{},"additionalProperties":false}),
+        ),
+        def(
             "backup.create",
             "Write a verified portable snapshot of the journal.",
             "write:files",

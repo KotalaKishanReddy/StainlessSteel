@@ -131,8 +131,20 @@ fn verify_sha256(path: &std::path::Path, want: &str) -> Result<()> {
     Err("no sha256 tool found (need sha256sum or shasum)".into())
 }
 
+/// Current asset scheme: `stainless-<os>-<arch>`, versioned by tag URL.
 fn asset_name() -> Result<String> {
-    let version = env!("CARGO_PKG_VERSION");
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Ok("stainless-linux-x86_64".into()),
+        ("linux", "aarch64") => Ok("stainless-linux-aarch64".into()),
+        ("macos", "aarch64") => Ok("stainless-macos-aarch64".into()),
+        (os, arch) => {
+            Err(format!("no prebuilt asset for {os}/{arch} yet; build from source").into())
+        }
+    }
+}
+
+/// Legacy v0.1.0 scheme kept as a download fallback only.
+fn legacy_asset_name(version: &str) -> Result<String> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => Ok(format!("stainless-{version}-linux-x86_64")),
         ("linux", "aarch64") => Ok(format!("stainless-{version}-linux-aarch64")),
@@ -142,31 +154,36 @@ fn asset_name() -> Result<String> {
     }
 }
 
-/// Stage a verified release asset under the state directory. Download only:
-/// nothing is executed, replaced, or restarted here. Activation with
-/// signature checks and rollback belongs to the updater workstream.
-pub fn download(version: Option<String>, machine: bool) -> Result<()> {
-    let tag = match version {
-        Some(v) => v,
-        None => latest_tag()?,
-    };
-    let asset = asset_name()?;
+fn checksum_for(sums: &str, asset: &str) -> Option<String> {
+    sums.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        let hash = parts.next()?;
+        let file = parts.next()?;
+        (file == asset).then(|| hash.to_owned())
+    })
+}
+
+/// Fetch one tag's checksums once, pick the current asset name with a
+/// legacy fallback, then fetch and verify exactly that asset. A checksum
+/// mismatch aborts immediately: it is never retried as another name.
+fn stage_tagged(tag: &str) -> Result<(std::path::PathBuf, String, String)> {
+    let primary = asset_name()?;
     let base = download_base();
     let repo = repo();
     let sums = fetch_text(&format!(
         "{base}/{repo}/releases/download/{tag}/SHA256SUMS.txt"
     ))?;
-    let want = sums
-        .lines()
-        .find_map(|line| {
-            let mut parts = line.split_whitespace();
-            let hash = parts.next()?;
-            let file = parts.next()?;
-            (file == asset).then(|| hash.to_owned())
-        })
-        .ok_or("checksum entry missing for this asset")?;
+    let (asset, want) = match checksum_for(&sums, &primary) {
+        Some(want) => (primary, want),
+        None => {
+            let legacy = legacy_asset_name(tag_version(tag))?;
+            let want =
+                checksum_for(&sums, &legacy).ok_or("checksum entry missing for this asset")?;
+            (legacy, want)
+        }
+    };
     let bytes = fetch_bytes(&format!("{base}/{repo}/releases/download/{tag}/{asset}"))?;
-    let dir = crate::store::directory()?.join("updates").join(&tag);
+    let dir = crate::store::directory()?.join("updates").join(tag);
     std::fs::create_dir_all(&dir)?;
     let staged = dir.join(&asset);
     let tmp = dir.join(format!("{asset}.part"));
@@ -176,16 +193,266 @@ pub fn download(version: Option<String>, machine: bool) -> Result<()> {
         return Err("checksum mismatch: staged file deleted".into());
     }
     std::fs::rename(&tmp, &staged)?;
+    Ok((staged, want, asset))
+}
+
+/// Stage a verified release asset under the state directory. Download only:
+/// nothing is executed, replaced, or restarted here.
+pub fn download(version: Option<String>, machine: bool) -> Result<()> {
+    let tag = match version {
+        Some(v) => v,
+        None => latest_tag()?,
+    };
+    let (path, want, asset) = stage_tagged(&tag)?;
     if machine {
         println!(
             "{}",
-            json!({"version":tag_version(&tag),"asset":asset,"path":staged,"sha256":want})
+            json!({"version":tag_version(&tag),"asset":asset,"path":path,"sha256":want})
+        );
+    } else {
+        println!("staged {} (sha256 verified)", path.display());
+    }
+    Ok(())
+}
+
+fn updates_dir() -> Result<std::path::PathBuf> {
+    Ok(crate::store::directory()?.join("updates"))
+}
+
+fn journal(outcome: &str, detail: &Value) {
+    let Ok(dir) = updates_dir() else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let line = json!({"outcome":outcome,"detail":detail}).to_string() + "\n";
+    use std::io::Write as _;
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("install.log"))
+        .and_then(|mut f| f.write_all(line.as_bytes()));
+}
+
+fn lock_path() -> Result<std::path::PathBuf> {
+    Ok(updates_dir()?.join("update.lock"))
+}
+
+fn acquire_lock() -> Result<std::path::PathBuf> {
+    let path = lock_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if let Ok(raw) = std::fs::read_to_string(&path) {
+        if let Ok(pid) = raw.trim().parse::<i64>() {
+            if pid > 0 && crate::agent::process_alive(pid) {
+                return Err(format!("another update is in progress (pid {pid})").into());
+            }
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+    std::fs::write(&path, std::process::id().to_string())?;
+    Ok(path)
+}
+
+fn verify_attestation(file: &std::path::Path) -> Result<()> {
+    let status = std::process::Command::new("gh")
+        .args([
+            "attestation",
+            "verify",
+            &file.display().to_string(),
+            "--repo",
+            &repo(),
+        ])
+        .output()
+        .map_err(|_| -> Box<dyn std::error::Error> {
+            "release attestation could not be verified (gh CLI missing); refusing to install".into()
+        })?;
+    if !status.status.success() {
+        return Err("release attestation verification failed; refusing to install".into());
+    }
+    Ok(())
+}
+
+fn quiesce(db: &crate::store::Store) -> Result<()> {
+    for s in db.list_all()? {
+        let id = s["id"].as_str().unwrap_or("");
+        if let Some(turn) = db.pending(id)? {
+            return Err(format!(
+                "session {id} has an active turn ({turn}); resolve it or wait before updating"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn health_check(exe: &std::path::Path, expect_version: &str) -> Result<()> {
+    let doctor = std::process::Command::new(exe)
+        .args(["doctor", "--json"])
+        .output()
+        .map_err(|_| -> Box<dyn std::error::Error> { "health check could not run".into() })?;
+    if !doctor.status.success() {
+        return Err("health check failed: doctor rejected the install".into());
+    }
+    let status = std::process::Command::new(exe)
+        .args(["update", "status", "--json"])
+        .output()
+        .map_err(|_| -> Box<dyn std::error::Error> { "health check could not run".into() })?;
+    if !status.status.success() {
+        return Err("health check failed: status rejected the install".into());
+    }
+    let info: Value =
+        serde_json::from_slice(&status.stdout).map_err(|_| -> Box<dyn std::error::Error> {
+            "health check returned invalid JSON".into()
+        })?;
+    if info["version"] != expect_version {
+        return Err("health check failed: version mismatch after activation".into());
+    }
+    Ok(())
+}
+
+/// Full update: verify, stage, attest, quiesce, back up state, atomically
+/// activate, health-check, and roll back on any failure. Only direct
+/// installs are eligible; package-managed and source builds are refused
+/// with guidance instead of being touched.
+pub fn install(version: Option<String>, machine: bool) -> Result<()> {
+    if install_receipt()["kind"] != "direct" {
+        return Err("this copy was not installed by the installer (package manager or source build?); update it with its own tool instead of stainless update install".into());
+    }
+    let exe = std::env::current_exe()?;
+    let dir = exe
+        .parent()
+        .ok_or("cannot locate the installed binary")?
+        .to_path_buf();
+    let previous = dir.join("stainless.previous");
+    let tag = match version {
+        Some(v) => v,
+        None => latest_tag()?,
+    };
+    let lock = acquire_lock()?;
+    let done = |outcome: &str, detail: &Value| {
+        let _ = std::fs::remove_file(&lock);
+        journal(outcome, detail);
+    };
+    if parse_version(tag_version(&tag)) <= parse_version(env!("CARGO_PKG_VERSION")) {
+        done("already-current", &json!({"version": tag_version(&tag)}));
+        if machine {
+            println!(
+                "{}",
+                json!({"version":tag_version(&tag),"activated":false,"reason":"already-current"})
+            );
+        } else {
+            println!("Already on v{}; nothing to do", tag_version(&tag));
+        }
+        return Ok(());
+    }
+    let (staged, want, _asset) = stage_tagged(&tag)?;
+    if let Err(e) = verify_attestation(&staged) {
+        done(
+            "aborted",
+            &json!({"version":tag_version(&tag),"reason":e.to_string()}),
+        );
+        return Err(e);
+    }
+    let db = crate::store::Store::open()?;
+    if let Err(e) = quiesce(&db) {
+        done(
+            "aborted",
+            &json!({"version":tag_version(&tag),"reason":e.to_string()}),
+        );
+        return Err(e);
+    }
+    let backup_path = updates_dir()?.join(format!(
+        "sessions-pre-{}-{}.sqlite3",
+        tag_version(&tag),
+        std::process::id()
+    ));
+    if let Err(e) = db.backup(&backup_path) {
+        done(
+            "aborted",
+            &json!({"version":tag_version(&tag),"reason":e.to_string()}),
+        );
+        return Err(format!("state backup failed: {e}").into());
+    }
+    if previous.exists() {
+        let _ = std::fs::remove_file(&previous);
+    }
+    if std::fs::rename(&exe, &previous).is_err() {
+        done(
+            "aborted",
+            &json!({"version":tag_version(&tag),"reason":"cannot stage previous binary"}),
+        );
+        return Err("cannot replace the installed binary (read-only directory?)".into());
+    }
+    let activated = std::fs::rename(&staged, &exe).is_ok();
+    if !activated {
+        let _ = std::fs::rename(&previous, &exe);
+        done(
+            "rolled-back",
+            &json!({"version":tag_version(&tag),"reason":"activation rename failed"}),
+        );
+        return Err("activation failed; previous binary restored".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755));
+    }
+    if let Err(e) = health_check(&exe, tag_version(&tag)) {
+        let _ = std::fs::rename(&exe, dir.join("stainless.failed"));
+        let _ = std::fs::rename(&previous, &exe);
+        done(
+            "rolled-back",
+            &json!({"version":tag_version(&tag),"reason":e.to_string()}),
+        );
+        return Err(format!("{e}; previous binary restored").into());
+    }
+    done(
+        "installed",
+        &json!({"from":env!("CARGO_PKG_VERSION"),"to":tag_version(&tag),"sha256":want}),
+    );
+    if machine {
+        println!(
+            "{}",
+            json!({"version":tag_version(&tag),"activated":true,"previous":"stainless.previous"})
         );
     } else {
         println!(
-            "staged {} (sha256 verified; activation is not implemented yet)",
-            staged.display()
+            "Updated to v{} (previous binary kept as stainless.previous; `stainless update rollback` to revert)",
+            tag_version(&tag)
         );
+    }
+    Ok(())
+}
+
+/// Restore the previous binary kept by `update install`.
+pub fn rollback(machine: bool) -> Result<()> {
+    let exe = std::env::current_exe()?;
+    let dir = exe
+        .parent()
+        .ok_or("cannot locate the installed binary")?
+        .to_path_buf();
+    let previous = dir.join("stainless.previous");
+    if !previous.is_file() {
+        return Err("no previous binary to roll back to".into());
+    }
+    let lock = acquire_lock()?;
+    let failed = dir.join("stainless.failed");
+    let _ = std::fs::remove_file(&failed);
+    if std::fs::rename(&exe, &failed).is_err() || std::fs::rename(&previous, &exe).is_err() {
+        let _ = std::fs::rename(&failed, &exe);
+        let _ = std::fs::remove_file(&lock);
+        return Err("rollback failed; install left untouched".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755));
+    }
+    let _ = std::fs::remove_file(&lock);
+    journal("rolled-back", &json!({}));
+    if machine {
+        println!("{}", json!({"rolled_back": true}));
+    } else {
+        println!("Rolled back; the replaced binary is kept as stainless.failed");
     }
     Ok(())
 }

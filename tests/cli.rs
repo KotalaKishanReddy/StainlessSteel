@@ -638,8 +638,8 @@ fn agent_spawn_marks_failure_when_model_unreachable() {
     }
     assert_eq!(status, "failed");
 }
-fn serve_fixture(listener: TcpListener, sums: String, asset: Vec<u8>) {
-    for _ in 0..2 {
+fn serve_fixture(listener: TcpListener, sums: String, asset: Vec<u8>, n: usize) {
+    for _ in 0..n {
         let (mut s, _) = listener.accept().unwrap();
         let head = request_head(&s);
         let payload: &[u8] = if head.contains("SHA256SUMS.txt") {
@@ -671,11 +671,7 @@ fn update_download_stages_verified_asset() {
     if std::env::consts::OS != "linux" {
         return;
     }
-    let asset_name = format!(
-        "stainless-{}-linux-{}",
-        env!("CARGO_PKG_VERSION"),
-        std::env::consts::ARCH
-    );
+    let asset_name = format!("stainless-linux-{}", std::env::consts::ARCH);
     let asset: Vec<u8> = b"fake-binary-bytes".to_vec();
     let hash = {
         let p = std::env::temp_dir().join(format!("stainless-hash-{}", std::process::id()));
@@ -688,7 +684,7 @@ fn update_download_stages_verified_asset() {
     let sums = format!("{hash}  {asset_name}\n");
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port().to_string();
-    let server = thread::spawn(move || serve_fixture(listener, sums, asset));
+    let server = thread::spawn(move || serve_fixture(listener, sums, asset, 2));
     let c = Case::new();
     let base = format!("http://127.0.0.1:{port}");
     let out = c
@@ -712,7 +708,7 @@ fn update_download_stages_verified_asset() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port().to_string();
     let server =
-        thread::spawn(move || serve_fixture(listener, bad_sums, b"tampered-bytes".to_vec()));
+        thread::spawn(move || serve_fixture(listener, bad_sums, b"tampered-bytes".to_vec(), 2));
     let c2 = Case::new();
     let base = format!("http://127.0.0.1:{port}");
     let out = c2
@@ -730,6 +726,220 @@ fn update_download_stages_verified_asset() {
         .join("v9.9.9")
         .join(&asset_name)
         .exists());
+    server.join().unwrap();
+}
+fn fake_gh(dir: &std::path::Path, code: i32) -> PathBuf {
+    let bin = dir.join("fakebin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("gh");
+    fs::write(&script, format!("#!/bin/sh\nexit {code}\n")).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    bin
+}
+fn direct_install_copy(c: &Case) -> PathBuf {
+    fs::create_dir_all(&c.0).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&c.0, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let dest = c.0.join("stainless");
+    fs::copy(env!("CARGO_BIN_EXE_stainless"), &dest).unwrap();
+    fs::write(
+        c.0.join(".stainless-install-receipt.json"),
+        r#"{"install_kind":"direct"}"#,
+    )
+    .unwrap();
+    dest
+}
+#[test]
+fn update_install_refuses_foreign_installs_and_empty_rollback() {
+    let c = Case::new();
+    let out = c.exec(&["update", "install", "--version", "v0.1.0"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("its own tool"));
+    assert!(!c.exec(&["update", "rollback"]).status.success());
+    assert!(
+        String::from_utf8_lossy(&c.exec(&["update", "rollback"]).stderr)
+            .contains("no previous binary")
+    );
+}
+#[test]
+fn update_install_reports_current_and_journals() {
+    let c = Case::new();
+    let dest = direct_install_copy(&c);
+    let current = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let out = Command::new(&dest)
+        .args(["update", "install", "--version", &current])
+        .env("STAINLESS_HOME", &c.0)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("nothing to do"));
+    let log = fs::read_to_string(c.0.join("updates").join("install.log")).unwrap();
+    assert!(log.contains("already-current"));
+}
+#[test]
+fn update_install_aborts_when_attestation_fails() {
+    if std::env::consts::OS != "linux" {
+        return;
+    }
+    let asset_name = format!("stainless-linux-{}", std::env::consts::ARCH);
+    let asset: Vec<u8> = b"tampered-bytes".to_vec();
+    let hash = {
+        let p = std::env::temp_dir().join(format!("stainless-h2-{}", std::process::id()));
+        fs::write(&p, &asset).unwrap();
+        let hex =
+            String::from_utf8(Command::new("sha256sum").arg(&p).output().unwrap().stdout).unwrap();
+        fs::remove_file(&p).unwrap();
+        hex.split_whitespace().next().unwrap().to_owned()
+    };
+    let sums = format!("{hash}  {asset_name}\n");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let server = thread::spawn(move || serve_fixture(listener, sums, asset, 2));
+    let c = Case::new();
+    let dest = direct_install_copy(&c);
+    let bin = fake_gh(&c.0, 1);
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let base = format!("http://127.0.0.1:{port}");
+    let out = Command::new(&dest)
+        .args(["update", "install", "--version", "v9.9.9"])
+        .env("STAINLESS_HOME", &c.0)
+        .env("PATH", &path)
+        .env("STAINLESS_API_BASE", &base)
+        .env("STAINLESS_DOWNLOAD_BASE", &base)
+        .env("STAINLESS_REPO", "x")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("attestation"));
+    let log = fs::read_to_string(c.0.join("updates").join("install.log")).unwrap();
+    assert!(log.contains("aborted"));
+    server.join().unwrap();
+}
+#[test]
+fn update_install_refuses_while_a_turn_is_active() {
+    if std::env::consts::OS != "linux" {
+        return;
+    }
+    let c = Case::new();
+    let dest = direct_install_copy(&c);
+    let bin = fake_gh(&c.0, 0);
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let asset_name = format!("stainless-linux-{}", std::env::consts::ARCH);
+    let asset: Vec<u8> = b"quiesce-bytes".to_vec();
+    let hash = {
+        let p = std::env::temp_dir().join(format!("stainless-h3-{}", std::process::id()));
+        fs::write(&p, &asset).unwrap();
+        let hex =
+            String::from_utf8(Command::new("sha256sum").arg(&p).output().unwrap().stdout).unwrap();
+        fs::remove_file(&p).unwrap();
+        hex.split_whitespace().next().unwrap().to_owned()
+    };
+    let sums = format!("{hash}  {asset_name}\n");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let server = thread::spawn(move || serve_fixture(listener, sums, asset, 2));
+    let base = format!("http://127.0.0.1:{port}");
+    let id = c.ok(&["session", "new"]);
+    let hanging = TcpListener::bind("127.0.0.1:0").unwrap();
+    let hport = hanging.local_addr().unwrap().port().to_string();
+    let holder = thread::spawn(move || {
+        let (s, _) = hanging.accept().unwrap();
+        request(&s);
+        thread::sleep(Duration::from_secs(20));
+    });
+    let mut child = Command::new(env!("CARGO_BIN_EXE_stainless"))
+        .args([
+            "run",
+            "--session",
+            &id,
+            "--port",
+            &hport,
+            "--model",
+            "m",
+            "hi",
+        ])
+        .env("STAINLESS_HOME", &c.0)
+        .env_remove("STAINLESS_MODEL")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut pending = false;
+    for _ in 0..100 {
+        let v = c.json(&["session", "recovery", "inspect", &id]);
+        if !v["pending_turn"].is_null() {
+            pending = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(pending);
+    let out = Command::new(&dest)
+        .args(["update", "install", "--version", "v9.9.9"])
+        .env("STAINLESS_HOME", &c.0)
+        .env("PATH", &path)
+        .env("STAINLESS_API_BASE", &base)
+        .env("STAINLESS_DOWNLOAD_BASE", &base)
+        .env("STAINLESS_REPO", "x")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("active turn"));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    drop(holder);
+    server.join().unwrap();
+}
+#[test]
+fn update_download_falls_back_to_legacy_asset_name() {
+    if std::env::consts::OS != "linux" {
+        return;
+    }
+    let legacy = format!("stainless-9.9.9-linux-{}", std::env::consts::ARCH);
+    let asset: Vec<u8> = b"legacy-bytes".to_vec();
+    let hash = {
+        let p = std::env::temp_dir().join(format!("stainless-h4-{}", std::process::id()));
+        fs::write(&p, &asset).unwrap();
+        let hex =
+            String::from_utf8(Command::new("sha256sum").arg(&p).output().unwrap().stdout).unwrap();
+        fs::remove_file(&p).unwrap();
+        hex.split_whitespace().next().unwrap().to_owned()
+    };
+    let sums = format!("{hash}  {legacy}\n");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    let server = thread::spawn(move || serve_fixture(listener, sums, asset, 2));
+    let c = Case::new();
+    let base = format!("http://127.0.0.1:{port}");
+    let out = c
+        .cmd(&["update", "download", "--version", "v9.9.9", "--json"])
+        .env("STAINLESS_API_BASE", &base)
+        .env("STAINLESS_DOWNLOAD_BASE", &base)
+        .env("STAINLESS_REPO", "x")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["asset"], legacy);
+    assert_eq!(
+        fs::read(PathBuf::from(v["path"].as_str().unwrap())).unwrap(),
+        b"legacy-bytes"
+    );
     server.join().unwrap();
 }
 #[test]

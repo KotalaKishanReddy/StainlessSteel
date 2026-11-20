@@ -138,6 +138,19 @@ enum Update {
         #[arg(long)]
         json: bool,
     },
+    /// Verify, stage, attest, and atomically activate a release.
+    Install {
+        /// Install this tag instead of the latest release.
+        #[arg(long)]
+        version: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Restore the previous binary kept by update install.
+    Rollback {
+        #[arg(long)]
+        json: bool,
+    },
 }
 #[derive(Subcommand)]
 enum Repo {
@@ -457,6 +470,8 @@ fn execute() -> Result<()> {
             Update::Check { json } => update::check(json)?,
             Update::Status { json } => update::status(json)?,
             Update::Download { version, json } => update::download(version, json)?,
+            Update::Install { version, json } => update::install(version, json)?,
+            Update::Rollback { json } => update::rollback(json)?,
         },
         Command::Tool { action } => match action {
             Tool::List { json: machine } => {

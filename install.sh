@@ -6,7 +6,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/KotalaKishanReddy/StainlessSteel/main/install.sh | sh
 #
 # Environment:
-#   STAINLESS_VERSION  release tag to install (default: v0.1.0)
+#   STAINLESS_VERSION  release tag to install (default: latest release,
+#                      fallback v0.1.0 when the API is unreachable)
 #   PREFIX             install directory (default: $HOME/.local/bin)
 #
 # StainlessSteel is source-available under PolyForm Strict 1.0.0. By
@@ -15,7 +16,6 @@
 set -eu
 
 REPO="KotalaKishanReddy/StainlessSteel"
-VERSION="${STAINLESS_VERSION:-v0.1.0}"
 PREFIX="${PREFIX:-$HOME/.local/bin}"
 
 need() {
@@ -47,15 +47,38 @@ esac
 need curl
 need sha256sum
 
-ASSET="stainless-${VERSION#v}-linux-${ASSET_ARCH}"
+VERSION="${STAINLESS_VERSION:-}"
+if [ -z "$VERSION" ]; then
+  VERSION="$(curl -fsSL --max-time 15 "https://api.github.com/repos/$REPO/releases/latest" \
+    | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)" || true
+  if [ -z "$VERSION" ]; then
+    echo "warning: could not reach the release API; falling back to v0.1.0" >&2
+    echo "warning: set STAINLESS_VERSION to pick a release explicitly" >&2
+    VERSION="v0.1.0"
+  fi
+fi
+
 BASE="https://github.com/$REPO/releases/download/$VERSION"
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
 
+# Current asset scheme first, legacy v0.1.0 scheme as fallback.
+ASSET="stainless-linux-${ASSET_ARCH}"
+if ! curl -fsSL -o "$TMPDIR/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt"; then
+  echo "error: release $VERSION not found (check STAINLESS_VERSION)" >&2
+  exit 1
+fi
+if ! grep -q "  $ASSET\$" "$TMPDIR/SHA256SUMS.txt"; then
+  ASSET="stainless-${VERSION#v}-linux-${ASSET_ARCH}"
+  if ! grep -q "  $ASSET\$" "$TMPDIR/SHA256SUMS.txt"; then
+    echo "error: no asset for linux/$ASSET_ARCH in $VERSION" >&2
+    exit 1
+  fi
+fi
+
 echo "Downloading $ASSET ($VERSION) ..."
 curl -fsSL -o "$TMPDIR/$ASSET" "$BASE/$ASSET"
-curl -fsSL -o "$TMPDIR/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt"
 
 echo "Verifying checksum ..."
 (cd "$TMPDIR" && sha256sum -c SHA256SUMS.txt --status --ignore-missing) || {
