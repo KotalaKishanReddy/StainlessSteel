@@ -1,0 +1,15 @@
+pkgbase = stainless-steel-bin
+	pkgdesc = Local-first coding assistant (source-available, PolyForm Strict 1.0.0)
+	pkgver = 0.2.0
+	pkgrel = 1
+	url = https://github.com/KotalaKishanReddy/StainlessSteel
+	arch = x86_64
+	arch = aarch64
+	license = custom:PolyForm-Strict-1.0.0
+	depends = glibc
+	source_x86_64 = https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.0/stainless-linux-x86_64
+	source_aarch64 = https://github.com/KotalaKishanReddy/StainlessSteel/releases/download/v0.2.0/stainless-linux-aarch64
+	sha256sums_x86_64 = 0e2091a132e468151f91558c3d72e68f139598455ea06322c3d834428acc8880
+	sha256sums_aarch64 = 032895145a7698720680682b8eb9aa69924c19803e9e02a627f6e2c85532fd27
+
+pkgname = stainless-steel-bin
